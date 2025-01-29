@@ -1,15 +1,12 @@
 import axios from 'axios';
 
 const BRANCH = 'master';
-const OWNER = 'rstacruz';
+const OWNER = 'hintzd'; // Updated to your fork
 const REPO = 'cheatsheets';
 
-const listClient = axios.create({
-  baseURL: `https://api.github.com/repos/${OWNER}/${REPO}/git/trees`,
-});
-
-const fileClient = axios.create({
-  baseURL: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}`,
+const apiClient = axios.create({
+  baseURL: `https://api.github.com/repos/${OWNER}/${REPO}/git`,
+  headers: { Accept: 'application/vnd.github.v3+json' },
 });
 
 interface ListResponse {
@@ -23,19 +20,40 @@ interface File {
   mode: string;
   type: 'tree' | 'blob';
   sha: string;
-  size: number;
+  size?: number;
   url: string;
 }
 
 class Service {
   static async listFiles() {
-    const response = await listClient.get<ListResponse>(`/${BRANCH}`);
-    return response.data.tree;
+    try {
+      // Step 1: Get latest commit SHA
+      const refRes = await apiClient.get(`/refs/heads/${BRANCH}`);
+      const commitSha = refRes.data.object.sha;
+
+      // Step 2: Get commit details to extract the tree SHA
+      const commitRes = await apiClient.get(`/commits/${commitSha}`);
+      const treeSha = commitRes.data.tree.sha;
+
+      // Step 3: Fetch the tree
+      const treeRes = await apiClient.get<ListResponse>(
+        `/trees/${treeSha}?recursive=1`,
+      );
+      return treeRes.data.tree;
+    } catch (error) {
+      console.error(error.response ? error.response.data : error.message);
+    }
   }
 
   static async getSheet(slug: string) {
-    const response = await fileClient.get<string>(`/${slug}.md`);
-    return response.data;
+    try {
+      const response = await axios.get<string>(
+        `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${slug}.md`,
+      );
+      return response.data;
+    } catch (error) {
+      console.error(error.response ? error.response.data : error.message);
+    }
   }
 
   static urlFor(slug: string) {
